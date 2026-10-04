@@ -78,8 +78,11 @@ final class LocationService: NSObject {
         }
         status = .locating
         manager.startUpdatingLocation()
-        // 允许复用几分钟内的缓存定位，省电且够用
-        if let cached = manager.location, cached.age < 120, coordinate == nil {
+        // 允许复用两分钟内的缓存定位，省电且够用。
+        // CLLocation 没有 age 属性，新鲜度要用 timestamp 自己算。
+        if let cached = manager.location,
+           abs(cached.timestamp.timeIntervalSinceNow) < 120,
+           coordinate == nil {
             apply(latitude: cached.coordinate.latitude,
                   longitude: cached.coordinate.longitude,
                   accuracy: cached.horizontalAccuracy)

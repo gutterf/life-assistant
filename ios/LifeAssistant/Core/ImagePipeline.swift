@@ -1,6 +1,8 @@
 import Foundation
 import UIKit
-import Vision
+// Vision 的请求类没有标 Sendable，而 perform() 要丢到后台队列执行。
+// @preconcurrency 让它按旧规则编译，消掉一片 Sendable 警告（行为不变）。
+@preconcurrency import Vision
 
 /// 图片处理：压缩 + 端上 OCR。
 ///

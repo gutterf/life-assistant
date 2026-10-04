@@ -98,9 +98,10 @@ struct LibraryPicker: UIViewControllerRepresentable {
             dismiss()
             guard let provider = results.first?.itemProvider,
                   provider.canLoadObject(ofClass: UIImage.self) else { return }
-            provider.loadObject(ofClass: UIImage.self) { object, _ in
+            // 闭包里引用属性必须写 self（编译器的显式捕获语义要求）
+            provider.loadObject(ofClass: UIImage.self) { [weak self] object, _ in
                 guard let image = object as? UIImage else { return }
-                Task { @MainActor in onPicked(image) }
+                Task { @MainActor in self?.onPicked(image) }
             }
         }
     }
