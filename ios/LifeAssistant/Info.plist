@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>zh_CN</string>
+	<key>CFBundleDisplayName</key>
+	<string>生活助手</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>1.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+
+	<!-- ================= 权限说明（全部为中文，审核必看） ================= -->
+
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>用于获取你当前的位置，从而规划路线和在附近搜索饭店、药店等场所。位置信息仅在你使用 App 时获取，并发送到你的自有服务器用于查询地图服务。</string>
+
+	<key>NSCameraUsageDescription</key>
+	<string>用于拍摄照片，识别画面中的文字并结合位置给出建议，例如判断菜单、商品标签或说明书内容。</string>
+
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>用于从相册中选择照片进行分析，不会读取或上传你未主动选择的图片。</string>
+
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于在你主动保存时，把分析结果或卡片图片存回相册。</string>
+
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于录制你的语音提问，并转换成文字发送给助手。</string>
+
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>用于把你说的话转换成文字。语音在设备本地完成识别，不会上传原始录音。</string>
+
+	<!-- ================= 界面 ================= -->
+
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string></string>
+	</dict>
+
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<key>UIUserInterfaceStyle</key>
+	<string>Light</string>
+
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!-- ================= 网络：调试期 ATS 例外 =================
+	     自签侧载调试时后端是明文 HTTP、IP 又经常变，
+	     这里直接放开，避免每次换 Wi-Fi 都被 ATS 拦一次。
+
+	     上线前必须整段替换为下面这种精确写法，并把后端换成 HTTPS：
+
+	     <key>NSAppTransportSecurity</key>
+	     <dict>
+	       <key>NSExceptionDomains</key>
+	       <dict>
+	         <key>api.your-domain.com</key>
+	         <dict>
+	           <key>NSExceptionAllowsInsecureHTTPLoads</key><false/>
+	         </dict>
+	       </dict>
+	     </dict> -->
+
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>

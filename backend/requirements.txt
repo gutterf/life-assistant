@@ -1,0 +1,12 @@
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.2
+httpx>=0.27
+python-multipart>=0.0.9
+
+# 服务端本地 OCR（可选）。不安装则依赖 iOS 端 Vision 传入 ocr_text。
+# rapidocr-onnxruntime 会在首次运行时下载模型到用户目录。
+rapidocr-onnxruntime>=1.3.24
+pillow>=10.3
+numpy>=1.26,<2.3

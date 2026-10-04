@@ -1,0 +1,32 @@
+# ---- 密钥与本地配置（绝不要提交） ----
+.env
+.env.*
+!.env.example
+backend/.env
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ---- Xcode ----
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+DerivedData/
+build/
+*.xcuserstate
+*.moved-aside
+
+# ---- macOS ----
+.DS_Store
+._*
+
+# ---- 杂项 ----
+*.log
+.tmp/

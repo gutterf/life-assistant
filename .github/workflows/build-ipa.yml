@@ -1,0 +1,113 @@
+name: build-ipa
+
+# 手动触发，也可以推到 main 时自动编（改动落在 ios/ 下时）。
+#
+# 产出的 IPA 是**未签名**的：CI 上没有证书，签名交给 Windows 这边的爱思助手，
+# 用你自己的 Apple ID 签，不需要开发者账号。
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - "ios/**"
+      - ".github/workflows/build-ipa.yml"
+
+jobs:
+  build:
+    # iOS 只能在这上面编。
+    # 注意：macos-14 自带的 Xcode 读不了新版 XcodeGen 生成的工程格式
+    # （会报 "future Xcode project file format (77)"），必须用更新的镜像。
+    runs-on: macos-15
+    timeout-minutes: 30
+
+    steps:
+      - name: 取代码
+        uses: actions/checkout@v4
+
+      - name: 看环境
+        run: |
+          xcodebuild -version
+          swift --version
+          xcodebuild -showsdks | grep -i iphoneos || true
+
+      - name: 确认 iOS SDK 不低于部署目标 18.0
+        run: |
+          FULL=$(xcrun --sdk iphoneos --show-sdk-version)
+          MAJOR=${FULL%%.*}
+          echo "iOS SDK: $FULL"
+          if [ "$MAJOR" -lt 18 ]; then
+            echo "::error::iOS SDK 为 $FULL，低于部署目标 18.0，请换更新的 runner 镜像"
+            exit 1
+          fi
+
+      - name: 选 Xcode
+        run: |
+          # 用镜像里最新的正式版 Xcode。
+          # 不用第三方 setup-xcode action：它会去下别的版本，反而是失败源。
+          latest=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$latest" ]; then
+            echo "使用 $latest"
+            sudo xcode-select -s "$latest/Contents/Developer"
+            xcodebuild -version
+          fi
+
+      - name: 装 XcodeGen
+        run: brew install xcodegen
+
+      - name: 生成 Xcode 工程
+        working-directory: ios
+        run: |
+          xcodegen generate
+          echo "生成的工程格式版本："
+          grep -m1 objectVersion LifeAssistant.xcodeproj/project.pbxproj || true
+
+      - name: 编译（不签名）
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project LifeAssistant.xcodeproj \
+            -scheme LifeAssistant \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 找到产物
+        id: find
+        working-directory: ios
+        run: |
+          APP=$(find build -name "LifeAssistant.app" -type d | head -1)
+          if [ -z "$APP" ]; then
+            echo "::error::编译没有产出 .app，往上看 xcodebuild 的报错"
+            find build -maxdepth 4 -name "*.app" -o -maxdepth 4 -name "*.xcarchive" || true
+            exit 1
+          fi
+          echo "app=$APP" >> $GITHUB_OUTPUT
+          echo "找到：$APP"
+          ls -la "$APP" | head -20
+
+      - name: 打包成 ipa
+        working-directory: ios
+        run: |
+          APP="${{ steps.find.outputs.app }}"
+          rm -rf Payload LifeAssistant-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP" Payload/
+          # 剥掉可能残留的签名信息。留着会让爱思助手在重签时报签名错误。
+          rm -rf Payload/LifeAssistant.app/_CodeSignature || true
+          rm -f  Payload/LifeAssistant.app/embedded.mobileprovision || true
+          zip -qry LifeAssistant-unsigned.ipa Payload
+          ls -lh LifeAssistant-unsigned.ipa
+          shasum -a 256 LifeAssistant-unsigned.ipa
+
+      - name: 上传 ipa
+        uses: actions/upload-artifact@v4
+        with:
+          name: LifeAssistant-unsigned-ipa
+          path: ios/LifeAssistant-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30

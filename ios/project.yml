@@ -1,0 +1,57 @@
+name: LifeAssistant
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "18.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+targets:
+  LifeAssistant:
+    type: application
+    platform: iOS
+    sources:
+      - path: LifeAssistant
+        excludes:
+          - "Info.plist"
+    settings:
+      base:
+        PRODUCT_NAME: LifeAssistant
+        # 侧载前建议改成自己的反域名，避免与他人重复
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.lifeassistant
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: LifeAssistant/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        # 代码按 Swift 6 并发语义书写（@MainActor / Sendable），
+        # 但语言模式保持 5.0 以避免构建摩擦。想开严格并发就改成 "6.0"。
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        # CI 上只出未签名 IPA，签名交给 Windows 侧的爱思助手。
+        # 这里必须是 Manual + 三项关闭：留 Automatic 且 DEVELOPMENT_TEAM 为空时，
+        # xcodebuild 会在「requires a development team」这一步直接失败，
+        # 命令行传 CODE_SIGNING_ALLOWED=NO 也压不住。
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGNING_REQUIRED: "NO"
+        CODE_SIGNING_ALLOWED: "NO"
+        CODE_SIGN_IDENTITY: ""
+        DEVELOPMENT_TEAM: ""
+
+# 显式声明 scheme：CI 里的 xcodebuild -scheme LifeAssistant 依赖它
+schemes:
+  LifeAssistant:
+    build:
+      targets:
+        LifeAssistant: all
+    run:
+      config: Debug
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release
