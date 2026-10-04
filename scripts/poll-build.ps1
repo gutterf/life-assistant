@@ -1,4 +1,4 @@
-# 盯 GitHub Actions，编好了就把 ipa 下回桌面
+﻿# 盯 GitHub Actions，编好了就把 ipa 下回桌面
 #
 # 用法：
 #   set GH_TOK=<你的 GitHub token>
@@ -20,6 +20,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch { }
+# PS 5.1 默认不加载 System.Net.Http，下面用到的 HttpClient 在这个程序集里。
+try { Add-Type -AssemblyName System.Net.Http -ErrorAction Stop } catch { }
 
 function Say([string]$m, [string]$Color = 'Gray') {
     Write-Host ("[{0}] {1}" -f (Get-Date -Format 'HH:mm:ss'), $m) -ForegroundColor $Color
@@ -108,35 +110,56 @@ if (-not $target) {
 }
 Say ("下载 {0}  ({1:N1} MB)" -f $target.name, ($target.size_in_bytes / 1MB))
 
-# artifact 下载会 302 跳到 Azure blob。Authorization 跟过去会 401，
-# 所以第一跳带 token 但手动拦住重定向，第二跳去掉 token 再下。
-function Get-Redirect([string]$url, [hashtable]$headers) {
-    $req = [System.Net.HttpWebRequest]::Create($url)
-    $req.AllowAutoRedirect = $false
-    $req.UserAgent = 'dsh'
-    $req.Timeout = 60000
-    foreach ($k in $headers.Keys) { $req.Headers.Add($k, $headers[$k]) }
-    try {
-        $resp = $req.GetResponse()
-        $loc = $resp.Headers['Location']
-        $resp.Close()
-        return $loc
-    } catch [System.Net.WebException] {
-        $resp = $_.Exception.Response
-        if ($resp) {
-            $code = [int]$resp.StatusCode
-            if ($code -in 301, 302, 303, 307, 308) { return $resp.Headers['Location'] }
-        }
-        throw
+# ---- 下载 artifact ----
+# GitHub 的 artifact 下载地址会 302 跳到 *.blob.core.windows.net。
+# 这台机器上路由器的 DNS 解析不了那个域（查询直接超时），公共 DNS 可以。
+# 而且 artifact 的签名地址只活很短时间，所以不能让 curl 先拿 Location 再单独下
+# （手工两跳会 403）——正确做法是让 curl 带 token 一路跟随重定向：
+# curl 跨域时会自动丢掉 Authorization，正好是这里需要的行为。
+function Save-Artifact([string]$url, [string]$outPath) {
+    $curl = "$env:SystemRoot\System32\curl.exe"
+    $hdrFile = Join-Path $env:TEMP 'la-artifact-headers.txt'
+    $auth = @('-H', "Authorization: Bearer $Token", '-H', 'User-Agent: dsh',
+              '-H', 'Accept: application/vnd.github+json')
+
+    # 第一跳只为探出 blob 的主机名（输出丢进 NUL，不取正文）
+    $blobHost = $null
+    & $curl -s -o NUL -D $hdrFile --max-time 60 @auth $url
+    if (Test-Path $hdrFile) {
+        $loc = Get-Content $hdrFile | Where-Object { $_ -match '^(?i)location:\s*(\S+)' } | Select-Object -First 1
+        if ($loc -and $loc -match 'https?://([^/]+)/') { $blobHost = $Matches[1] }
     }
+
+    $ips = @()
+    if ($blobHost) {
+        foreach ($dns in '223.5.5.5', '119.29.29.29', '180.76.76.76') {
+            $ips = @(Resolve-DnsName $blobHost -Server $dns -Type A -ErrorAction SilentlyContinue |
+                     Where-Object { $_.IPAddress } | Select-Object -ExpandProperty IPAddress)
+            if ($ips.Count -gt 0) {
+                Say ("{0} -> {1}（经 {2}）" -f $blobHost, ($ips -join ', '), $dns) 'DarkGray'
+                break
+            }
+        }
+    }
+
+    $attempts = @()
+    foreach ($ip in $ips) { $attempts += , @('--resolve', "${blobHost}:443:$ip") }
+    $attempts += , @()   # 兜底：交给系统解析
+
+    foreach ($extra in $attempts) {
+        if (Test-Path $outPath) { Remove-Item $outPath -Force }
+        & $curl -L --fail --silent --show-error --max-time 600 @auth @extra -o $outPath $url
+        if ($LASTEXITCODE -eq 0 -and (Test-Path $outPath) -and (Get-Item $outPath).Length -gt 0) {
+            return $true
+        }
+    }
+    return $false
 }
 
-$blob = Get-Redirect $target.archive_download_url $hdr
-if (-not $blob) { Say '拿不到下载地址' 'Red'; exit 1 }
-
 $tmpZip = Join-Path $env:TEMP 'lifeassistant-artifact.zip'
-if (Test-Path $tmpZip) { Remove-Item $tmpZip -Force }
-Invoke-WebRequest -Uri $blob -OutFile $tmpZip -TimeoutSec 600
+if (-not (Save-Artifact $target.archive_download_url $tmpZip)) {
+    Say '下载 artifact 失败' 'Red'; exit 1
+}
 Say ("拿到 {0:N1} MB" -f ((Get-Item $tmpZip).Length / 1MB))
 
 # ---- 解出 ipa ----

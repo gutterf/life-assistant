@@ -9,7 +9,9 @@ on:
   push:
     branches: [ main ]
     paths:
-      - "ios/**"
+      # 只盯着真正影响 IPA 的东西：改文档、改后端、改自测脚本都不该触发一次 macOS 构建
+      - "ios/LifeAssistant/**"
+      - "ios/project.yml"
       - ".github/workflows/build-ipa.yml"
 
 jobs:

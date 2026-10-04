@@ -183,21 +183,50 @@ iOS 的签名链决定了 App 必须在 macOS 上编译，而你在 Windows 上�
 
 免费 Apple ID 的限制：证书 **7 天失效**、同时最多 **3 个**自签 App。过期后重新 Cmd+R 一次即可，数据不会丢。
 
-### 路径 B：纯 Windows —— 云端编译 + Sideloadly
+### 路径 B：纯 Windows —— 云端编译 + 爱思助手（本项目已走通）
 
 **公开仓库的 macOS runner 免费**，这是 Windows 用户唯一全自助的路。首次约 40 分钟。
 
 1. GitHub 建一个 **public** 仓库，把 `life-assistant/` 里的内容推到仓库根目录（`.github/` 必须在根）。
-2. 进 Actions 页 → 左侧 **Build unsigned IPA** → *Run workflow*。
-3. 等 5–8 分钟，构建完在页面底部下载 artifact `LifeAssistant-unsigned-ipa`，解压得到 `LifeAssistant-unsigned.ipa`。
-   - 产出的是**未签名** IPA，Sideloadly 会用你的 Apple ID 现场签名，这一步不需要开发者账号。
-4. Windows 上装两样东西：
-   - [Sideloadly](https://sideloadly.io)（侧载工具本身）
-   - [iTunes](https://www.apple.com/itunes/download/win64)（**只为提供 Apple 设备驱动**，装完不用打开；Microsoft Store 版也带驱动）
-5. iPhone 连电脑，Sideloadly 里 iPhone 图标出现后：拖入 IPA → 填 Apple ID → Start。
-6. 手机上同样要走**开发者模式 + 信任证书**两步（见路径 A 的 7、8）。
+   仓库已经建好在 [gutterf/life-assistant](https://github.com/gutterf/life-assistant)，后续只要 push 就会自动编。
+2. 等 5–8 分钟（push 会自动触发；也可以进 Actions 页手动 *Run workflow*）。
+3. 双击仓库根目录的 `推送并取ipa.bat`：提交推送 → 盯 Actions → 把 ipa 下到桌面 `生活助手.ipa`。
+   - 产出的是**未签名** IPA，由爱思助手用你的 Apple ID 现场签名，不需要开发者账号。
+4. iPhone 连电脑。
+   - 爱思助手自带 Apple 驱动；若它认不到手机，再装 [iTunes](https://www.apple.com/itunes/download/win64)（**只为驱动**，装完不用打开）。
+5. 打开**爱思助手** → 拖入桌面的 `生活助手.ipa` → 用 Apple ID 签名安装。
+6. 手机上要走**开发者模式 + 信任证书**两步（见路径 A 的 7、8）。
 
-之后每次改代码，重跑一次 workflow、下载、侧载，约 10 分钟。
+之后每次改代码，双击一次 `.bat`，约 8 分钟出新包。
+
+### 一键脚本与产物自检
+
+仓库根目录的 `推送并取ipa.bat` 做三件事：提交推送 → 盯 Actions → 把 ipa 下到桌面 `生活助手.ipa`。
+双击即可，**不需要配 token**（脚本会自动问 git 要它已经在用的那个凭据）。
+
+只想等构建、不下包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\poll-build.ps1
+```
+
+拿到 ipa 后先自检一遍再装，避免"装到一半报签名错"：
+
+```powershell
+cd ios && python tools\verify_ipa.py "$env:USERPROFILE\Desktop\生活助手.ipa" --expect-permissions
+```
+
+它会打开包核实：Payload 结构、arm64 真机架构、MinimumOSVersion、五项权限说明、ATS 明文 HTTP 开关，以及
+**有没有残留的 `_CodeSignature` / `embedded.mobileprovision`**（这两样是爱思助手重签失败最常见的原因）。
+
+### 这台 Windows 机器上的四个坑（都已在脚本里绕开）
+
+| 现象 | 原因 | 脚本里的处理 |
+|---|---|---|
+| `git push` 报 `schannel: SEC_E_WRONG_PRINCIPAL` | 全局配置把 `https://github.com/` 用 `insteadOf` 重写成了 `ghproxy.net`，那是只读加速站，证书也不匹配 | push 时用一份空配置顶掉全局配置（**不改动你的全局配置**） |
+| 下载 artifact 报 `The remote name could not be resolved` | 路由器 DNS 解析 `*.blob.core.windows.net` 直接超时；公共 DNS 可以 | 用公共 DNS 解析出 IP，再 `curl --resolve` 直连（SNI 与证书仍按域名校验） |
+| 手工两跳取 artifact 报 `403` | artifact 的签名地址只活很短时间，先取 Location 再单独下就已失效 | 让 curl 带 token 一路跟随重定向（跨域时 curl 会自动丢掉 Authorization，正是需要的行为） |
+| `.ps1` 一跑就报 `字符串缺少终止符` | Windows PowerShell 5.1 把无 BOM 的 UTF-8 当 GBK 读，中文注释把字符串截断了 | `scripts/poll-build.ps1` 存为 **UTF-8 with BOM**；改完脚本别丢 BOM |
 
 ### 路径 C：租云 Mac
 
@@ -220,15 +249,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
   Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.254.*' }).IPAddress
 ```
 
-3. 放行防火墙（需要**管理员** PowerShell，普通权限会报拒绝访问）：
+3. 先确认防火墙是不是开着的，**三个配置文件都关着就不用加规则**（本机就是这种情况）：
 
 ```powershell
+Get-NetFirewallProfile | Select-Object Name, Enabled
+# 有任意一个 Enabled=True 才需要下面这条（需要管理员权限）
 New-NetFirewallRule -DisplayName "LifeAssistant Backend 8000" `
   -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Private
 ```
 
 4. 手机和电脑连**同一个 Wi-Fi**。注意路由器的「访客网络」通常做了设备隔离，连上会互相 ping 不通。
-5. 打开 App → 右上角信号图标 → 填 `192.168.x.x:8000` → 保存并测试连接。
+5. **先用手机浏览器开一次** `http://电脑IP:8000/health`。能看到 JSON 就说明网络通了，再进 App 填地址——这一步能把「网络不通」和「App 配置错」分开，省很多时间。
+6. 打开 App → 右上角信号图标 → 填 `192.168.x.x:8000` → 保存并测试连接。
 
 这一步做完，以后换 Wi-Fi、改端口都只要在 App 里改地址，**不用重新编译**。
 
@@ -321,19 +353,27 @@ New-NetFirewallRule -DisplayName "LifeAssistant Backend 8000" `
 
 ## 已验证 / 未验证
 
-已验证（本机 Windows + Python 3.12.10，全部为实际执行输出）：
+已验证（全部为实际执行输出）：
+
+**后端（本机 Windows + Python 3.12.10）**
 
 - `python -m pytest tests -q` → **13 passed**。覆盖：坐标系往返与偏移量、周边搜索确实传 GCJ-02、路线卡片字段、**公交 cost/duration 字段语义**、**OCR 标签正则**、无定位时的引导、图片意图无图时的引导、高德故障降级、图片上传的 OCR 优先链、超大文件 413、非图片类型 415、`/health` 与 OpenAPI 契约。
 - `python tools/smoke_e2e.py` → **77/77 项通过**。真 uvicorn + 真 HTTP + 假上游，不打桩任何客户端代码；断言覆盖高德四个接口的参数与响应解析、DeepSeek 意图 JSON 解析、四类卡片的字段契约、语音播报文本、三种降级路径。
-- 真实 `uvicorn app.main:app` 子进程启动，`/health` 返回 `configured: true` 与 `missing: []`，`/api/v1/chat`、`/api/v1/analyze-image` 均在 OpenAPI paths 中。
-- `ios/tools/make_icon.py` 已运行，产出 1024×1024 PNG。
+- **真实 DeepSeek 调用已跑通**（用本机凭据库里的 key）：`POST /api/v1/chat` 问「煮鸡蛋要几分钟」→ 2288 ms 返回 `intent=knowledge`，回答是准确的分档时间，「播报」文本同步生成。意图判定与常识问答这两条最不可替代的链路，走的是真 API。
+- 真实 `uvicorn app.main:app --host 0.0.0.0` 启动，`127.0.0.1:8000` 与局域网 `192.168.10.106:8000` 都返回 200，`/api/v1/chat`、`/api/v1/analyze-image` 均在 OpenAPI paths 中。
 
-未验证 —— 下面是这份交付里你必须在目标环境上自己确认的部分，不要当成已完成：
+**iOS（GitHub Actions，macOS runner，Xcode 26.3 / iPhoneOS 26.2 SDK）**
 
-- **iOS 端代码未经编译。** 本机是 Windows，没有 Xcode 与 iOS SDK（`swiftc`/`xcodebuild`/`xcodegen` 均不存在），Swift 代码一次都没编译过。已按已知的编译失败模式逐条人工核对并修掉：`@Observable` 的绑定必须用 `@Bindable` 投影、`@Observable` 所在文件需 `import Observation`、`private(set)` 属性不能在 View 里赋值、result builder 内声明变量后不能再写 `return`、用到 `String(format:)` 的文件补 `import Foundation`。**首次在 macOS 上构建仍可能有我没预见的报错**，那是正常的，按 Xcode 的提示改即可。
-- **`.github/workflows/build-ipa.yml` 没在真实 runner 上跑过。** 逻辑按 GitHub Actions 的标准写法组织，并带 Xcode 版本与产物存在性两道自检；首次运行若报错，看 Actions 日志里 `::error::` 开头的提示定位。
-- **高德与 DeepSeek 的真实调用没跑过**（没有可用 Key）。上面两个测试里，下游分别是打桩和本地假上游。真实 Key 的坑主要在两个地方：高德 Key 必须是「Web 服务」类型，否则 `INVALID_USER_KEY`；DeepSeek 的 `json_object` 模式要求提示词里出现 "json" 字样，`INTENT_SYSTEM` 里已经写了。
+- **代码已真实编译通过**（run #2 `success`）。首次编译报了 2 个错，都已修：`ImagePicker` 的 PHPicker 回调闭包引用属性缺显式 `self`；`LocationService` 用了不存在的 `CLLocation.age`（改用 `timestamp` 算新鲜度）。另把 `ImagePipeline` 的 `import Vision` 改成 `@preconcurrency import`，消掉 3 条 Sendable 警告。**现在整个 target 零错误、零警告。**
+- **IPA 已产出并逐项校验**：`ios/tools/verify_ipa.py` 打开包核实 → Payload 结构 ✓、`arm64` 真机架构 ✓、`MinimumOSVersion 18.0` ✓、五项权限说明齐全 ✓、ATS 允许明文 HTTP ✓、**无残留 `_CodeSignature` / `embedded.mobileprovision`** ✓（可直接交爱思助手重签）。
+- 从 push 到拿到可安装 IPA 的全流程走通，含这台机器特有的四个坑（见「一键脚本与产物自检」一节）。
+
+未验证 —— 下面是必须在真机上确认的部分，不要当成已完成：
+
+- **尚未真正装到手机上**。IPA 已就绪并校验通过，但签名与安装要用你的 Apple ID 在爱思助手里完成，这一步需要人工操作。
+- **高德的两条链路（路线规划 / 周边搜索）没跑过真实 API** —— 没有可用 key。已有的 77 项断言验证的是「参数怎么传、响应怎么解析」，用的是本地假上游；真实 key 的坑主要是类型必须选「Web 服务」，否则报 `INVALID_USER_KEY`。
 - **真机上的 CoreLocation / 相机 / 相册 / 麦克风 / 语音识别权限流程没跑过**，只在代码层做了时机控制（定位在启动、语音在首次点麦克风）。iOS 的权限弹窗在模拟器与真机上表现不完全一致，建议首次真机运行时逐个点一遍。
+- **Bundle Identifier 目前是 `com.example.lifeassistant`**。侧载能用，但如果你想避免与别人重名，改 `ios/project.yml` 里的 `PRODUCT_BUNDLE_IDENTIFIER` 后重跑一次 `.bat` 即可。
 
 ## 上线前清单
 
