@@ -30,43 +30,47 @@ final class APIClient: @unchecked Sendable {
         self.encoder = encoder
     }
 
-    // MARK: - 连通性自检
+ // MARK: - 连通性自检
 
-    /// 用于设置页的「测试连接」，返回人类可读的结果
-    func healthCheck() async -> (ok: Bool, message: String) {
-        var request = URLRequest(url: baseURL.appending(path: "health"))
-        request.httpMethod = "GET"
-        request.timeoutInterval = 8
-        do {
-            let (data, response) = try await session.data(for: request)
-            guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
-                let code = (response as? HTTPURLResponse)?.statusCode ?? -1
-                return (false, "服务端返回 \(code)")
-            }
-            if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                let missing = (object["missing"] as? [String]) ?? []
-                if missing.isEmpty {
-                    return (true, "连接正常，密钥已配置")
-                }
-                return (false, "已连通，但服务端缺少：\(missing.joined(separator: "、"))")
-            }
-            return (true, "连接正常")
-        } catch {
-            return (false, "连不上：\(error.localizedDescription)")
-        }
-    }
+ /// 用于设置页的「测试连接」，返回人类可读的结果
+ func healthCheck() async -> (ok: Bool, message: String) {
+ var request = URLRequest(url: baseURL.appending(path: "health"))
+ request.httpMethod = "GET"
+ request.timeoutInterval = 8
+ applyOverrides(&request)
+ do {
+ let (data, response) = try await session.data(for: request)
+ guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+ let code = (response as? HTTPURLResponse)?.statusCode ?? -1
+ return (false, "服务端返回 \(code)")
+ }
+ if let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+ let missing = (object["missing"] as? [String]) ?? []
+ let serverModel = (object["model"] as? String) ?? ""
+ let modelLine = serverModel.isEmpty ? "" : " · 模型 \(serverModel)"
+ if missing.isEmpty {
+ return (true, "连接正常，密钥已配置\(modelLine)")
+ }
+ return (false, "已连通，但服务端缺少：\(missing.joined(separator: "、"))")
+ }
+ return (true, "连接正常")
+ } catch {
+ return (false, "连不上：\(error.localizedDescription)")
+ }
+ }
 
-    // MARK: - 文字提问
+ // MARK: - 文字提问
 
-    func chat(_ request: ChatRequest) async throws -> ChatResponse {
-        var urlRequest = URLRequest(url: baseURL.appending(path: "api/v1/chat"))
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        urlRequest.httpBody = try encoder.encode(request)
+ func chat(_ request: ChatRequest) async throws -> ChatResponse {
+ var urlRequest = URLRequest(url: baseURL.appending(path: "api/v1/chat"))
+ urlRequest.httpMethod = "POST"
+ urlRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+ applyOverrides(&urlRequest)
+ urlRequest.httpBody = try encoder.encode(request)
 
-        let response: ChatResponse = try await perform(urlRequest)
-        return response
-    }
+ let response: ChatResponse = try await perform(urlRequest)
+ return response
+ }
 
     // MARK: - 图片分析
 
@@ -79,11 +83,12 @@ final class APIClient: @unchecked Sendable {
         citycode: String?,
         sessionId: String
     ) async throws -> ImageAnalyzeResponse {
-        let boundary = "Boundary-\(UUID().uuidString)"
-        var urlRequest = URLRequest(url: baseURL.appending(path: "api/v1/analyze-image"))
-        urlRequest.httpMethod = "POST"
-        urlRequest.setValue("multipart/form-data; boundary=\(boundary)",
-                            forHTTPHeaderField: "Content-Type")
+ let boundary = "Boundary-\(UUID().uuidString)"
+ var urlRequest = URLRequest(url: baseURL.appending(path: "api/v1/analyze-image"))
+ urlRequest.httpMethod = "POST"
+ urlRequest.setValue("multipart/form-data; boundary=\(boundary)",
+ forHTTPHeaderField: "Content-Type")
+ applyOverrides(&urlRequest)
 
         var fields: [String: String] = [
             "question": question,
@@ -111,9 +116,21 @@ final class APIClient: @unchecked Sendable {
         return response
     }
 
-    // MARK: - 传输
+ // MARK: - 传输
 
-    private func perform<T: Decodable>(_ request: URLRequest, attempt: Int = 0) async throws -> T {
+ /// 把 App 内选的模型与密钥写进请求头，后端按次覆盖 .env 配置。
+ /// 默认预设 chat 不显式带模型头；自定义预设或填写了 key 时必带。
+ private func applyOverrides(_ request: inout URLRequest) {
+ let model = ServerSettings.effectiveModel
+ if ServerSettings.modelPreset == .custom || model != "deepseek-chat" {
+ request.setValue(model, forHTTPHeaderField: ServerSettings.modelHeader)
+ }
+ if let key = ServerSettings.effectiveApiKey {
+ request.setValue(key, forHTTPHeaderField: ServerSettings.apiKeyHeader)
+ }
+ }
+
+ private func perform<T: Decodable>(_ request: URLRequest, attempt: Int = 0) async throws -> T {
         do {
             let (data, urlResponse) = try await session.data(for: request)
             guard let http = urlResponse as? HTTPURLResponse else {

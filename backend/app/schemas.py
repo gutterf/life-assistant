@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -107,3 +108,22 @@ class ImageAnalyzeResponse(BaseModel):
     cards: list[Card] = Field(default_factory=list)
     speech: str | None = None
     meta: dict = Field(default_factory=dict)
+
+
+# ---- App 端模型 / 密钥覆盖 ----
+
+# 请求头名：后端据此按次覆盖 .env 里的模型与 key
+MODEL_HEADER = "X-LifeAssistant-Model"
+API_KEY_HEADER = "X-LifeAssistant-Api-Key"
+
+
+@dataclass(frozen=True)
+class ClientOverride:
+    """单次请求的模型 / 密钥覆盖。字段为 None 表示沿用服务器配置。"""
+
+    model: str | None = None
+    api_key: str | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return self.model is not None or self.api_key is not None

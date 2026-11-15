@@ -93,6 +93,8 @@ def create_app() -> FastAPI:
             "status": "ok",
             "configured": not settings.missing_required(),
             "missing": settings.missing_required(),
+            "model": settings.deepseek_model,
+            "model_override_supported": True,
             "ocr_provider": settings.ocr_provider,
             "default_radius_m": settings.default_radius_m,
         }

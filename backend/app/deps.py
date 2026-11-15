@@ -5,10 +5,17 @@ from __future__ import annotations
 from fastapi import Request
 
 from .config import Settings, get_settings
+from .schemas import API_KEY_HEADER, MODEL_HEADER, ClientOverride
 from .services.amap import AMapClient
 from .services.deepseek import DeepSeekClient
 from .services.ocr import OCRService
 from .services.orchestrator import Orchestrator
+
+
+def get_client_override(request: Request) -> ClientOverride:
+    model = (request.headers.get(MODEL_HEADER) or "").strip() or None
+    key = (request.headers.get(API_KEY_HEADER) or "").strip() or None
+    return ClientOverride(model=model, api_key=key)
 
 
 def get_settings_dep(request: Request) -> Settings:

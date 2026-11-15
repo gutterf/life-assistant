@@ -11,8 +11,9 @@ import logging
 from typing import Any
 
 from ..config import Settings
-from ..schemas import (Card, CardType, ChatRequest, ChatResponse, GeoPoint, ImageAnalyzeResponse,
-                       ImageAnalysis, Intent, PlaceItem, RoutePlan, TravelMode)
+from ..schemas import (Card, CardType, ChatRequest, ChatResponse, ClientOverride, GeoPoint,
+                       ImageAnalyzeResponse, ImageAnalysis, Intent, PlaceItem, RoutePlan,
+                       TravelMode)
 from .amap import AMapClient, AMapError
 from .coord import format_amap_location, haversine_m, wgs84_to_gcj02
 from .deepseek import DeepSeekClient, DeepSeekError, IntentDecision
@@ -72,9 +73,13 @@ class Orchestrator:
         )
 
     # ------------------------------------------------------------ 主入口
-    async def handle_chat(self, req: ChatRequest) -> ChatResponse:
+    async def handle_chat(self, req: ChatRequest,
+                          override: ClientOverride | None = None) -> ChatResponse:
+        ov = override or ClientOverride()
         session_id = req.session_id or "local"
         meta: dict[str, Any] = {}
+        if ov.enabled:
+            meta["model_override"] = {"model": ov.model, "has_api_key": bool(ov.api_key)}
 
         location = await self.resolve_location(req.location, req.address, req.citycode)
         if location:
@@ -88,6 +93,8 @@ class Orchestrator:
             req.text,
             has_location=location is not None,
             context_hint=req.context_hint,
+            model=ov.model,
+            api_key=ov.api_key,
         )
         meta["intent"] = decision.as_meta()
 
@@ -99,25 +106,25 @@ class Orchestrator:
         }.get(decision.intent)
 
         if handler is None:
-            return await self._handle_knowledge(req, decision, location, session_id, meta)
+            return await self._handle_knowledge(req, decision, location, session_id, meta, ov)
 
         try:
-            return await handler(req, decision, location, session_id, meta)
+            return await handler(req, decision, location, session_id, meta, ov)
         except (AMapError, DeepSeekError) as exc:
             log.warning("意图 %s 处理失败: %s", decision.intent.value, exc)
-            return await self._fallback(req, decision, location, session_id, meta, str(exc))
+            return await self._fallback(req, decision, location, session_id, meta, str(exc), ov)
 
     # ------------------------------------------------------------ 路线规划
     async def _handle_route(self, req: ChatRequest, decision: IntentDecision,
                             location: ResolvedLocation | None, session_id: str,
-                            meta: dict[str, Any]) -> ChatResponse:
+                            meta: dict[str, Any], ov: ClientOverride) -> ChatResponse:
         if location is None:
             return self._need_location(session_id, meta,
                                        "规划路线需要先知道你在哪，点一下定位按钮就好。")
 
         destination_name = decision.destination or decision.search_query
         if not destination_name:
-            return await self._handle_knowledge(req, decision, location, session_id, meta)
+            return await self._handle_knowledge(req, decision, location, session_id, meta, ov)
 
         d_lng, d_lat, d_label = await self._amap.geocode(destination_name, decision.destination_city or location.city or "")
         dest_citycode = ""
@@ -155,7 +162,7 @@ class Orchestrator:
     # ------------------------------------------------------------ 周边搜索
     async def _handle_nearby(self, req: ChatRequest, decision: IntentDecision,
                              location: ResolvedLocation | None, session_id: str,
-                             meta: dict[str, Any]) -> ChatResponse:
+                             meta: dict[str, Any], ov: ClientOverride) -> ChatResponse:
         if location is None:
             return self._need_location(session_id, meta,
                                        "周边搜索需要定位，打开定位后我就能帮你找。")
@@ -203,10 +210,11 @@ class Orchestrator:
     # ------------------------------------------------------------ 常识问答
     async def _handle_knowledge(self, req: ChatRequest, decision: IntentDecision,
                                 location: ResolvedLocation | None, session_id: str,
-                                meta: dict[str, Any]) -> ChatResponse:
+                                meta: dict[str, Any], ov: ClientOverride) -> ChatResponse:
         try:
             answer = await self._llm.answer_knowledge(
-                req.text, location_label=location.label if location else None)
+                req.text, location_label=location.label if location else None,
+                model=ov.model, api_key=ov.api_key)
         except DeepSeekError as exc:
             log.warning("常识问答失败: %s", exc)
             answer = "我这边暂时连不上知识服务，稍后再问一次试试。"
@@ -217,7 +225,7 @@ class Orchestrator:
     # ------------------------------------------------------------ 图片分析
     async def _handle_image_without_photo(self, req: ChatRequest, decision: IntentDecision,
                                           location: ResolvedLocation | None, session_id: str,
-                                          meta: dict[str, Any]) -> ChatResponse:
+                                          meta: dict[str, Any], ov: ClientOverride) -> ChatResponse:
         """文字里说要看图、但这一轮没带图片。
 
         直接当成常识问题回答是错的：用户明显在等一个「看图」的结果，
@@ -235,7 +243,9 @@ class Orchestrator:
 
     async def handle_image(self, *, image_bytes: bytes, question: str, client_ocr_text: str | None,
                            point: GeoPoint | None, address: str | None, citycode: str | None,
-                           session_id: str) -> ImageAnalyzeResponse:
+                           session_id: str,
+                           override: ClientOverride | None = None) -> ImageAnalyzeResponse:
+        ov = override or ClientOverride()
         meta: dict[str, Any] = {}
         location = await self.resolve_location(point, address, citycode)
         ocr_text, provider = await self._ocr.extract(image_bytes, client_ocr_text)
@@ -243,12 +253,15 @@ class Orchestrator:
         meta["image_bytes"] = len(image_bytes)
         if location:
             meta["location"] = {"label": location.label, "city": location.city}
+        if ov.enabled:
+            meta["model_override"] = {"model": ov.model, "has_api_key": bool(ov.api_key)}
 
         try:
             analysis = await self._llm.analyze_image(
                 ocr_text=ocr_text, question=question,
                 location_label=location.label if location else None,
                 coordinates=(point.latitude, point.longitude) if point else None,
+                model=ov.model, api_key=ov.api_key,
             )
         except DeepSeekError as exc:
             log.warning("图片分析失败: %s", exc)
@@ -278,7 +291,7 @@ class Orchestrator:
 
     async def _fallback(self, req: ChatRequest, decision: IntentDecision,
                         location: ResolvedLocation | None, session_id: str,
-                        meta: dict[str, Any], reason: str) -> ChatResponse:
+                        meta: dict[str, Any], reason: str, ov: ClientOverride) -> ChatResponse:
         """地图服务不可用时，退回让大模型基于自身知识尽量回答，而不是直接报错。"""
         meta["degraded"] = True
         meta["reason"] = reason[:200]
@@ -287,6 +300,7 @@ class Orchestrator:
                 f"用户问：{req.text}\n（地图检索服务暂时不可用，请基于常识回答，"
                 f"不要编造具体的店名、距离或路线数据。）",
                 location_label=location.label if location else None,
+                model=ov.model, api_key=ov.api_key,
             )
         except DeepSeekError:
             answer = "地图服务暂时不可用，稍后再试一次。"

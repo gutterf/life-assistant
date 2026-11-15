@@ -135,8 +135,10 @@ class DeepSeekClient:
         temperature: float = 0.3,
         max_tokens: int = 1024,
         model: str | None = None,
+        api_key: str | None = None,
     ) -> str:
-        if not self._s.deepseek_api_key:
+        key = (api_key or "").strip() or self._s.deepseek_api_key
+        if not key:
             raise DeepSeekError("DEEPSEEK_API_KEY 未配置")
 
         payload: dict[str, Any] = {
@@ -153,10 +155,16 @@ class DeepSeekClient:
             # DeepSeek 的 json_object 模式要求提示词里出现 "json" 字样，否则报 400
             payload["response_format"] = {"type": "json_object"}
 
+        # App 端覆盖的 key 与全局不同时按次带 Authorization
+        extra_headers: dict[str, str] | None = None
+        if key != self._s.deepseek_api_key:
+            extra_headers = {"Authorization": f"Bearer {key}"}
+
         last_err: Exception | None = None
         for attempt in range(self._s.deepseek_max_retries + 1):
             try:
-                resp = await (await self._http()).post("/chat/completions", json=payload)
+                resp = await (await self._http()).post(
+                    "/chat/completions", json=payload, headers=extra_headers)
                 if resp.status_code in (429, 500, 502, 503, 504):
                     raise DeepSeekError(f"upstream {resp.status_code}: {resp.text[:200]}")
                 if resp.status_code >= 400:
@@ -172,7 +180,8 @@ class DeepSeekClient:
 
     # ---------------------------------------------------------- 意图判定
     async def classify(self, text: str, *, has_location: bool, has_image: bool = False,
-                       context_hint: str | None = None) -> IntentDecision:
+                       context_hint: str | None = None,
+                       model: str | None = None, api_key: str | None = None) -> IntentDecision:
         parts = [f"用户原话：{text}"]
         parts.append(f"用户是否已提供定位：{'是' if has_location else '否'}")
         if has_image:
@@ -181,7 +190,8 @@ class DeepSeekClient:
             parts.append(f"上一轮对话上下文（用于指代消解，如「去那儿」指向的地点）：{context_hint}")
         try:
             raw = await self._chat(INTENT_SYSTEM, "\n".join(parts),
-                                   json_mode=True, temperature=0.0, max_tokens=256)
+                                   json_mode=True, temperature=0.0, max_tokens=256,
+                                   model=model, api_key=api_key)
             data = _parse_json(raw)
             decision = IntentDecision(data)
         except (DeepSeekError, ValueError, json.JSONDecodeError) as exc:
@@ -195,9 +205,11 @@ class DeepSeekClient:
         return decision
 
     # ---------------------------------------------------------- 常识问答
-    async def answer_knowledge(self, text: str, *, location_label: str | None = None) -> str:
+    async def answer_knowledge(self, text: str, *, location_label: str | None = None,
+                               model: str | None = None, api_key: str | None = None) -> str:
         user = text if not location_label else f"（我在{location_label}）{text}"
-        return await self._chat(KNOWLEDGE_SYSTEM, user, temperature=0.5, max_tokens=700)
+        return await self._chat(KNOWLEDGE_SYSTEM, user, temperature=0.5, max_tokens=700,
+                                model=model, api_key=api_key)
 
     # ---------------------------------------------------------- 图片分析
     async def analyze_image(
@@ -207,6 +219,8 @@ class DeepSeekClient:
         question: str,
         location_label: str | None = None,
         coordinates: tuple[float, float] | None = None,
+        model: str | None = None,
+        api_key: str | None = None,
     ) -> ImageAnalysis:
         lines = []
         lines.append(f"图中 OCR 文字：\n{ocr_text.strip() if ocr_text.strip() else '（未识别到文字）'}")
@@ -216,7 +230,8 @@ class DeepSeekClient:
         if coordinates:
             lines.append(f"坐标（WGS-84）：{coordinates[0]:.6f}, {coordinates[1]:.6f}")
 
-        raw = await self._chat(IMAGE_SYSTEM, "\n\n".join(lines), temperature=0.4, max_tokens=900)
+        raw = await self._chat(IMAGE_SYSTEM, "\n\n".join(lines), temperature=0.4, max_tokens=900,
+                               model=model, api_key=api_key)
         tags = _extract_tags(ocr_text)
         return ImageAnalysis(
             ocr_text=ocr_text.strip(),

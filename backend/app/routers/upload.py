@@ -15,7 +15,7 @@ import logging
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 
 from ..config import Settings
-from ..deps import get_orchestrator, get_settings_dep
+from ..deps import ClientOverride, get_client_override, get_orchestrator, get_settings_dep
 from ..schemas import GeoPoint, ImageAnalyzeResponse
 from ..services.deepseek import DeepSeekError
 from ..services.orchestrator import Orchestrator
@@ -36,9 +36,10 @@ async def analyze_image(
     accuracy_m: float | None = Form(None),
     address: str | None = Form(None),
     citycode: str | None = Form(None),
-    session_id: str | None = Form(None),
-    orchestrator: Orchestrator = Depends(get_orchestrator),
-    settings: Settings = Depends(get_settings_dep),
+ session_id: str | None = Form(None),
+ orchestrator: Orchestrator = Depends(get_orchestrator),
+ settings: Settings = Depends(get_settings_dep),
+ override: ClientOverride = Depends(get_client_override),
 ) -> ImageAnalyzeResponse:
     if file.content_type and file.content_type not in _ACCEPTED:
         raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -68,6 +69,7 @@ async def analyze_image(
             address=address,
             citycode=citycode,
             session_id=session_id or "local",
+            override=override,
         )
     except DeepSeekError as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
