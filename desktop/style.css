@@ -644,6 +644,7 @@ input, textarea, select { font-family: inherit; color: var(--ink); outline: none
 .map-tile {
  position: absolute; width: 256px; height: 256px;
  background: #0B0E12 center/cover no-repeat;
+ display: block; border: 0;
 }
 .map-tile.err { background: #10151B; }
 .map-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }

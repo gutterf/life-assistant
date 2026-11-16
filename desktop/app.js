@@ -832,7 +832,10 @@ function openSettings() {
  } catch (e) { /* 静默 */ }
  }
  // ---------- 软件内卫星地图（纯 JS 自绘：Esri 卫星瓦片 + 高德附近全类型 POI） ----------
- const MAP_TILE_URL = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile';
+ const TILE_SOURCES = [
+ (z, x, y) => 'https://webst0' + (1 + ((x + y) % 4)) + '.is.autonavi.com/appmaptile?style=6&x=' + x + '&y=' + y + '&z=' + z,
+ (z, x, y) => 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/' + z + '/' + y + '/' + x,
+];
  const MAP_COLORS = ['#FF6B6B', '#FFA94D', '#FFD43B', '#69DB7C', '#38D9A9', '#4DABF7',
  '#748FFC', '#B197FC', '#F783AC', '#FF8787', '#63E6BE', '#A9E34B'];
  const M = { z: 15, lng: 121.4737, lat: 31.2304, pois: [], drag: null, balloon: null };
@@ -872,11 +875,23 @@ function openSettings() {
  wrap.innerHTML = '';
  for (let tx = x0; tx <= x1; tx++) {
  for (let ty = y0; ty <= y1; ty++) {
- const t = document.createElement('div');
+ const t = document.createElement('img');
  t.className = 'map-tile';
+ t.alt = '';
+ t.draggable = false;
  t.style.left = (tx * 256 - (cx - w / 2)) + 'px';
  t.style.top = (ty * 256 - (cy - h / 2)) + 'px';
- t.style.backgroundImage = 'url(' + MAP_TILE_URL + '/' + z + '/' + ty + '/' + tx + ')';
+ t.dataset.src = '0';
+ t.src = TILE_SOURCES[0](z, tx, ty);
+ t.addEventListener('error', () => {
+ const s = +(t.dataset.src || 0) + 1;
+ if (s < TILE_SOURCES.length) {
+ t.dataset.src = String(s);
+ t.src = TILE_SOURCES[s](z, tx, ty);
+ } else {
+ t.classList.add('err');
+ }
+ });
  wrap.appendChild(t);
  }
  }
@@ -985,26 +1000,33 @@ function openSettings() {
  }
  $('mapStatus').textContent = '附近 ' + M.pois.length + ' 家 · 半径 3 km · 点标记或列表定位';
  }
- async function loadMapPois() {
+async function loadMapPois() {
  $('mapStatus').textContent = '加载附近数据…';
+ const q = '?lat=' + M.lat + '&lng=' + M.lng + '&radius=3000';
+ const bases = [S.baseURL || location.origin, location.origin];
+ for (const base of bases) {
  try {
- const resp = await fetch(S.baseURL + '/api/v1/satellite/nearby?lat=' + M.lat + '&lng=' + M.lng + '&radius=3000');
+ const ctrl = new AbortController();
+ const timer = setTimeout(() => ctrl.abort(), 12000);
+ const resp = await fetch(base + '/api/v1/satellite/nearby' + q, { signal: ctrl.signal });
+ clearTimeout(timer);
  const data = await resp.json().catch(() => ({}));
- if (!resp.ok) throw new Error(data.detail || resp.status);
+ if (!resp.ok) throw new Error(data.detail || ('HTTP ' + resp.status));
  M.pois = data.pois || [];
  renderMapList();
  renderMapAll();
- } catch (e) {
+ return;
+ } catch (e) { /* 换源重试 */ }
+ }
  M.pois = [];
- $('mapStatus').textContent = '附近数据加载失败：' + e.message;
+ $('mapStatus').textContent = '附近数据加载失败，检查后端连接';
  renderMapList();
  }
- }
- function openMap() {
+function openMap() {
  if (S.location.status === 'ready') { M.lat = S.location.latitude; M.lng = S.location.longitude; }
  M.z = 15;
  $('mapPanel').hidden = false;
- renderMapAll();
+ try { renderMapAll(); } catch (e) { /* 地图渲染失败不阻断数据加载 */ }
  loadMapPois();
  }
  function closeMap() { $('mapPanel').hidden = true; hideBalloon(); }
