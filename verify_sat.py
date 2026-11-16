@@ -74,8 +74,9 @@ _, lst2 = req("GET", "/api/v1/sessions")
 check("删除后列表无此会话", not any(x["id"] == sid for x in lst2.get("sessions", [])))
 
 # 5. 破甲链路不受影响
-_, st_pojia = req("GET", "/api/v1/pojia/status")
+st_pojia, d_pojia = req("GET", "/api/v1/pojia/status")
 check("破甲状态接口200", st_pojia == 200, st_pojia)
+check("workbuddy 席位已注入", "workbuddy" in (d_pojia.get("marked") or []), d_pojia.get("marked"))
 
 print("\n%d/%d 通过" % (ok, ok + fail))
 sys.exit(0 if fail == 0 else 1)
