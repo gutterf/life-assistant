@@ -12,12 +12,14 @@ from typing import Any
 
 from ..config import Settings
 from ..schemas import (Card, CardType, ChatRequest, ChatResponse, ClientOverride, GeoPoint,
-                       ImageAnalyzeResponse, ImageAnalysis, Intent, PlaceItem, RoutePlan,
-                       TravelMode)
+                       ImageAnalyzeResponse, ImageAnalysis, Intent, NavigateRequest, NavigateResponse,
+                       PlaceItem, RoutePlan, TravelMode)
 from .amap import AMapClient, AMapError
 from .coord import format_amap_location, haversine_m, wgs84_to_gcj02
 from .deepseek import DeepSeekClient, DeepSeekError, IntentDecision
+from .filters import RESTRICTED_REPLY, is_restricted
 from .ocr import OCRService
+from .profile import get_profile
 
 log = logging.getLogger(__name__)
 
@@ -89,10 +91,16 @@ class Orchestrator:
                 "gcj02": [round(location.lng, 6), round(location.lat, 6)],
             }
 
+        # 硬框架注入：把用户生活画像拼进上下文提示，分类与回答都能利用
+        profile_block = get_profile().context_block()
+        hint = req.context_hint or ""
+        if profile_block:
+            hint = f"{hint}\n{profile_block}" if hint else profile_block
+
         decision = await self._llm.classify(
             req.text,
             has_location=location is not None,
-            context_hint=req.context_hint,
+            context_hint=hint,
             model=ov.model,
             api_key=ov.api_key,
         )
@@ -106,13 +114,29 @@ class Orchestrator:
         }.get(decision.intent)
 
         if handler is None:
-            return await self._handle_knowledge(req, decision, location, session_id, meta, ov)
+            resp = await self._handle_knowledge(req, decision, location, session_id, meta, ov)
+        else:
+            try:
+                resp = await handler(req, decision, location, session_id, meta, ov)
+            except (AMapError, DeepSeekError) as exc:
+                log.warning("意图 %s 处理失败: %s", decision.intent.value, exc)
+                resp = await self._fallback(req, decision, location, session_id, meta, str(exc), ov)
 
+        # 硬框架学习：每轮结束后静默更新画像（失败不影响回复）
         try:
-            return await handler(req, decision, location, session_id, meta, ov)
-        except (AMapError, DeepSeekError) as exc:
-            log.warning("意图 %s 处理失败: %s", decision.intent.value, exc)
-            return await self._fallback(req, decision, location, session_id, meta, str(exc), ov)
+            get_profile().observe_chat(
+                text=req.text,
+                intent=decision.intent.value,
+                location={"lat": location.lat, "lng": location.lng,
+                          "label": location.label, "city": location.city} if location else None,
+                poi_keyword=decision.poi_keyword,
+                route_mode=decision.travel_mode.value if decision.travel_mode else None,
+                destination=decision.destination,
+            )
+            get_profile().save()
+        except Exception as exc:  # noqa: BLE001
+            log.warning("画像学习失败（忽略）: %s", exc)
+        return resp
 
     # ------------------------------------------------------------ 路线规划
     async def _handle_route(self, req: ChatRequest, decision: IntentDecision,
@@ -207,14 +231,55 @@ class Orchestrator:
         return ChatResponse(session_id=session_id, intent=Intent.NEARBY, reply=reply,
                             cards=[card], speech=card.speech, meta=meta)
 
+    # ------------------------------------------------------------ 点选导航
+    async def handle_navigate(self, req: NavigateRequest, session_id: str) -> NavigateResponse:
+        """点选 POI 后直接导航：起点（WGS-84）转 GCJ-02，目的地已是高德 GCJ-02。"""
+        o_lng, o_lat = wgs84_to_gcj02(req.origin.longitude, req.origin.latitude)
+        dest_name = req.dest_name or "目的地"
+        mode = req.mode or TravelMode.DRIVING
+        amap_web_url = (
+            f"https://uri.amap.com/dir?from={o_lng},{o_lat},我的位置"
+            f"&to={req.dest.longitude},{req.dest.latitude},{dest_name}&callnative=1"
+        )
+        try:
+            plan = await self._amap.route(
+                mode, o_lng, o_lat, req.dest.longitude, req.dest.latitude,
+                citycode=req.citycode or "", dest_citycode=req.citycode or "",
+            )
+            card = Card(
+                type=CardType.ROUTE,
+                title=f"到 {dest_name}",
+                subtitle=_MODE_LABEL[mode],
+                speech=f"到{dest_name}，{plan.summary}。",
+                routes=[plan],
+            )
+            reply = f"从你的位置到**{dest_name}**，{plan.summary}。"
+            return NavigateResponse(session_id=session_id, reply=reply,
+                                    cards=[card], speech=card.speech, amap_web_url=amap_web_url)
+        except Exception as exc:  # noqa: BLE001 - 高德不可用也保网页导航兜底
+            log.warning("navigate 路线失败，降级网页导航: %s", exc)
+            return NavigateResponse(
+                session_id=session_id,
+                reply=f"路线服务暂不可用（{exc}），可点下方按钮在高德网页中开启导航。",
+                amap_web_url=amap_web_url,
+            )
+
     # ------------------------------------------------------------ 常识问答
     async def _handle_knowledge(self, req: ChatRequest, decision: IntentDecision,
                                 location: ResolvedLocation | None, session_id: str,
                                 meta: dict[str, Any], ov: ClientOverride) -> ChatResponse:
+        if not ov.no_filter and is_restricted(req.text):
+            card = Card(type=CardType.TEXT, title="回答", text=RESTRICTED_REPLY, speech=RESTRICTED_REPLY)
+            return ChatResponse(session_id=session_id, intent=Intent.KNOWLEDGE, reply=RESTRICTED_REPLY,
+                                cards=[card], speech=RESTRICTED_REPLY, meta=meta)
         try:
+            profile_block = get_profile().context_block()
+            prompt = req.text
+            if profile_block:
+                prompt = f"{profile_block}\n用户问：{req.text}"
             answer = await self._llm.answer_knowledge(
-                req.text, location_label=location.label if location else None,
-                model=ov.model, api_key=ov.api_key)
+                prompt, location_label=location.label if location else None,
+                model=ov.model, api_key=ov.api_key, no_filter=ov.no_filter)
         except DeepSeekError as exc:
             log.warning("常识问答失败: %s", exc)
             answer = "我这边暂时连不上知识服务，稍后再问一次试试。"
@@ -247,6 +312,15 @@ class Orchestrator:
                            override: ClientOverride | None = None) -> ImageAnalyzeResponse:
         ov = override or ClientOverride()
         meta: dict[str, Any] = {}
+        if not ov.no_filter and is_restricted(question):
+            meta["restricted"] = True
+            img = ImageAnalysis(ocr_text='', analysis=RESTRICTED_REPLY, tags=[], confidence=0.0)
+            return ImageAnalyzeResponse(
+                session_id=session_id, analysis=img, reply=RESTRICTED_REPLY,
+                cards=[Card(type=CardType.IMAGE_ANALYSIS, title="图片分析",
+                            text=RESTRICTED_REPLY, speech=RESTRICTED_REPLY)],
+                speech=RESTRICTED_REPLY, meta=meta,
+            )
         location = await self.resolve_location(point, address, citycode)
         ocr_text, provider = await self._ocr.extract(image_bytes, client_ocr_text)
         meta["ocr_provider"] = provider
@@ -261,7 +335,7 @@ class Orchestrator:
                 ocr_text=ocr_text, question=question,
                 location_label=location.label if location else None,
                 coordinates=(point.latitude, point.longitude) if point else None,
-                model=ov.model, api_key=ov.api_key,
+                model=ov.model, api_key=ov.api_key, no_filter=ov.no_filter,
             )
         except DeepSeekError as exc:
             log.warning("图片分析失败: %s", exc)
@@ -296,11 +370,15 @@ class Orchestrator:
         meta["degraded"] = True
         meta["reason"] = reason[:200]
         try:
+            profile_block = get_profile().context_block()
+            prompt = f"用户问：{req.text}\n（地图检索服务暂时不可用，请基于常识回答，"
+            prompt += "不要编造具体的店名、距离或路线数据。）"
+            if profile_block:
+                prompt = f"{profile_block}\n{prompt}"
             answer = await self._llm.answer_knowledge(
-                f"用户问：{req.text}\n（地图检索服务暂时不可用，请基于常识回答，"
-                f"不要编造具体的店名、距离或路线数据。）",
+                prompt,
                 location_label=location.label if location else None,
-                model=ov.model, api_key=ov.api_key,
+                model=ov.model, api_key=ov.api_key, no_filter=ov.no_filter,
             )
         except DeepSeekError:
             answer = "地图服务暂时不可用，稍后再试一次。"

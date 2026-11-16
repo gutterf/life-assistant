@@ -5,17 +5,20 @@ from __future__ import annotations
 from fastapi import Request
 
 from .config import Settings, get_settings
-from .schemas import API_KEY_HEADER, MODEL_HEADER, ClientOverride
+from .schemas import API_KEY_HEADER, MODEL_HEADER, NOFILTER_HEADER, ClientOverride, normalize_model
 from .services.amap import AMapClient
 from .services.deepseek import DeepSeekClient
 from .services.ocr import OCRService
 from .services.orchestrator import Orchestrator
+from .services import filters
 
 
 def get_client_override(request: Request) -> ClientOverride:
-    model = (request.headers.get(MODEL_HEADER) or "").strip() or None
-    key = (request.headers.get(API_KEY_HEADER) or "").strip() or None
-    return ClientOverride(model=model, api_key=key)
+ raw_model = (request.headers.get(MODEL_HEADER) or "").strip()
+ model = normalize_model(raw_model) if raw_model else None
+ key = (request.headers.get(API_KEY_HEADER) or "").strip() or None
+ no_filter = (request.headers.get(NOFILTER_HEADER) or "").strip() == "1" or filters.is_global_nofilter()
+ return ClientOverride(model=model, api_key=key, no_filter=no_filter)
 
 
 def get_settings_dep(request: Request) -> Settings:

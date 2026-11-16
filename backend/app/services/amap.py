@@ -51,6 +51,12 @@ class AMapClient:
             self._client = httpx.AsyncClient(
                 base_url=self._s.amap_base_url,
                 timeout=self._s.amap_timeout_s,
+                # 本机系统代理会在连接复用后把请求 target 重写成编码绝对 URI（第 2 个请求起 404），
+                # 下游全走内网/公网直连，不跟随环境代理。
+                trust_env=False,
+                # 沙箱 LocalProxy 对 keep-alive 连接上的 POST 响应有吞包 bug（GET 正常、POST 挂起），
+                # 每次请求后关闭连接（Connection: close）即可绕过，代价是多一次 TCP 握手。
+                headers={"Connection": "close"},
                 limits=httpx.Limits(max_connections=32, max_keepalive_connections=16),
             )
         return self._client
@@ -340,24 +346,29 @@ def _bus_instruction(line: dict[str, Any]) -> str:
 
 
 def _to_place(poi: dict[str, Any], lng: float, lat: float) -> PlaceItem:
-    biz = poi.get("biz_ext") or {}
-    rating = _float(biz.get("rating"))
-    dist = _int(poi.get("distance"))
-    if dist is None and isinstance(poi.get("location"), str) and "," in poi["location"]:
-        try:
-            plng, plat = (float(x) for x in poi["location"].split(",")[:2])
-            dist = int(haversine_m(lng, lat, plng, plat))
-        except ValueError:
-            dist = None
-    phone = poi.get("tel")
-    return PlaceItem(
-        name=str(poi.get("name") or "未命名地点"),
-        rating=rating,
-        distance_m=dist,
-        address=poi.get("address") if isinstance(poi.get("address"), str) else None,
-        phone=phone if isinstance(phone, str) and phone else None,
-        category=str(poi.get("type") or "").split(";")[-1] or None,
-    )
+ biz = poi.get("biz_ext") or {}
+ rating = _float(biz.get("rating"))
+ dist = _int(poi.get("distance"))
+ plng: float | None = None
+ plat: float | None = None
+ if isinstance(poi.get("location"), str) and "," in poi["location"]:
+  try:
+   plng, plat = (float(x) for x in poi["location"].split(",")[:2])
+  except ValueError:
+   plng = plat = None
+ if dist is None and plng is not None and plat is not None:
+  dist = int(haversine_m(lng, lat, plng, plat))
+ phone = poi.get("tel")
+ return PlaceItem(
+  name=str(poi.get("name") or "未命名地点"),
+  rating=rating,
+  distance_m=dist,
+  address=poi.get("address") if isinstance(poi.get("address"), str) else None,
+  phone=phone if isinstance(phone, str) and phone else None,
+  category=str(poi.get("type") or "").split(";")[-1] or None,
+  lng=plng,
+  lat=plat,
+ )
 
 
 def _int(v: Any) -> int | None:

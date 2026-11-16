@@ -7,7 +7,7 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from ..deps import ClientOverride, get_client_override, get_orchestrator
-from ..schemas import ChatRequest, ChatResponse
+from ..schemas import ChatRequest, ChatResponse, NavigateRequest, NavigateResponse
 from ..services.deepseek import DeepSeekError
 from ..services.orchestrator import Orchestrator
 
@@ -30,4 +30,12 @@ async def chat(
     except DeepSeekError as exc:
         # 大模型完全不可用时才返回 503，前端据此展示重试
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
-                            detail=f"模型服务不可用: {exc}") from exc
+            detail=f"模型服务不可用: {exc}") from exc
+
+
+@router.post("/navigate", response_model=NavigateResponse, summary="点选地点后开启导航")
+async def navigate(
+ payload: NavigateRequest,
+ orchestrator: Orchestrator = Depends(get_orchestrator),
+) -> NavigateResponse:
+    return await orchestrator.handle_navigate(payload, payload.session_id or "local")

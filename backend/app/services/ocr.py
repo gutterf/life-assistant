@@ -90,7 +90,7 @@ class OCRService:
 
     # --------------------------------------------------------------- baidu
     async def _token(self) -> str:
-        async with httpx.AsyncClient(timeout=10.0) as cli:
+        async with httpx.AsyncClient(timeout=10.0, trust_env=False) as cli:
             r = await cli.post(
                 "https://aip.baidubce.com/oauth/2.0/token",
                 params={
@@ -109,7 +109,7 @@ class OCRService:
             token = await self._token()
             if not token:
                 return ""
-            async with httpx.AsyncClient(timeout=20.0) as cli:
+            async with httpx.AsyncClient(timeout=20.0, trust_env=False) as cli:
                 r = await cli.post(
                     "https://aip.baidubce.com/rest/2.0/ocr/v1/general_basic",
                     params={"access_token": token},
