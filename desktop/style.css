@@ -624,12 +624,21 @@ input, textarea, select { font-family: inherit; color: var(--ink); outline: none
  display: flex; flex-direction: column;
  background: #10141A;
 }
+.map-panel[hidden] { display: none; }
 .map-bar {
  display: flex; align-items: center; gap: 14px;
  padding: 10px 16px;
  background: rgba(22, 27, 34, 0.95); color: #E8EDF2;
  border-bottom: 1px solid rgba(255,255,255,0.08);
 }
+.map-back {
+ display: inline-flex; align-items: center; gap: 6px;
+ padding: 7px 14px; border-radius: 18px;
+ background: #2C7BE5; color: #FFFFFF;
+ font-size: 13px; font-weight: 600; border: 0;
+ cursor: pointer; flex: none;
+}
+.map-back:hover { background: #3D8BF0; }
 .map-title { font-size: 14px; font-weight: 700; white-space: nowrap; }
 .map-legend { flex: 1; display: flex; flex-wrap: wrap; gap: 6px; overflow: hidden; max-height: 30px; }
 .map-chip {

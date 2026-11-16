@@ -1219,6 +1219,8 @@ function saveSettings() {
  $('sessionNewBtn').addEventListener('click', newSession);
  $('mapBtn').addEventListener('click', openMap);
  $('mapClose').addEventListener('click', closeMap);
+ const mc2 = $('mapClose2');
+ if (mc2) mc2.addEventListener('click', closeMap);
  $('mapZoomIn').addEventListener('click', mapZoomIn);
  $('mapZoomOut').addEventListener('click', mapZoomOut);
  $('mapRecenter').addEventListener('click', mapRecenter);

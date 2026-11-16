@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>生活助手</title>
-<link rel="stylesheet" href="style.css?v=2026111622">
+<link rel="stylesheet" href="style.css?v=2026111624">
 </head>
 <body>
 <div id="app">
@@ -173,9 +173,10 @@
   <!-- 软件内卫星地图面板（纯 JS 自绘：卫星瓦片 + 附近全类型 POI 标记） -->
  <div class="map-panel" id="mapPanel" hidden>
  <div class="map-bar">
+ <button class="map-back" id="mapClose" title="返回聊天">← 返回聊天</button>
  <span class="map-title">🛰️ 卫星地图 · 附近</span>
  <div class="map-legend" id="mapLegend"></div>
- <button class="nav-close" id="mapClose" title="关闭">✕</button>
+ <button class="nav-close" id="mapClose2" title="关闭">✕</button>
  </div>
  <div class="map-stage">
  <div class="map-wrap" id="mapWrap">
@@ -239,6 +240,6 @@
 
  <input type="file" id="fileInput" accept="image/*" hidden>
 </div>
-<script src="app.js?v=2026111622"></script>
+<script src="app.js?v=2026111624"></script>
 </body>
 </html>
