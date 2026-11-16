@@ -1,0 +1,7 @@
+{
+  "name": "lifeassistant-desktop",
+  "productName": "生活助手",
+  "version": "1.0.0",
+  "main": "main.js",
+  "description": "生活助手桌面版 - 与 iOS 端界面功能一致"
+}

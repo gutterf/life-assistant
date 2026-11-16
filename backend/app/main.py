@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import get_settings
-from .routers import assistant, chat, pojia, upload, voice
+from .routers import assistant, chat, pojia, satellite, sessions, upload, voice
 from .services.amap import AMapClient, AMapError
 from .services.deepseek import DeepSeekClient, DeepSeekError
 from .services.ocr import OCRService
@@ -97,6 +97,8 @@ def create_app() -> FastAPI:
  app.include_router(assistant.router)
  app.include_router(chat.router)
  app.include_router(pojia.router)
+ app.include_router(satellite.router)
+ app.include_router(sessions.router)
  app.include_router(upload.router)
  app.include_router(voice.router)
 

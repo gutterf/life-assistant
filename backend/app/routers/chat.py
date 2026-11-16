@@ -26,11 +26,20 @@ async def chat(
     ):
         log.info("无定位请求，意图可能受限: %s", payload.text[:40])
     try:
-        return await orchestrator.handle_chat(payload, override)
+        resp = await orchestrator.handle_chat(payload, override)
     except DeepSeekError as exc:
         # 大模型完全不可用时才返回 503，前端据此展示重试
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"模型服务不可用: {exc}") from exc
+                            detail=f"模型服务不可用: {exc}") from exc
+    # 会话归档：消息持久化到 data/sessions/<session_id>.json（失败不影响回复）
+    try:
+        from ..services import sessions
+        sid = payload.session_id or "local"
+        sessions.append_message(sid, "user", payload.text)
+        sessions.append_message(sid, "assistant", resp.reply)
+    except Exception: # noqa: BLE001
+        pass
+    return resp
 
 
 @router.post("/navigate", response_model=NavigateResponse, summary="点选地点后开启导航")

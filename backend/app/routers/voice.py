@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
+import httpx
 
 from ..services import voice
 from ..services.voice import DATA_DIR, REFS_DIR, _JOBS
@@ -95,6 +96,8 @@ def tts(req: TTSReq):
         raise HTTPException(404, "这个声音不存在，先提取或录制")
     try:
         out = voice.synth(text, req.voice_id)
+    except httpx.HTTPError as e:
+        raise HTTPException(503, f"语音引擎连不上: {e}") from e
     except RuntimeError as e:
         raise HTTPException(502, f"语音服务异常: {e}") from e
     return JSONResponse(

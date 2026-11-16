@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>生活助手</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div id="app">
+ <div class="canvas-bg"></div>
+
+ <!-- 会话侧栏 -->
+ <aside class="sidebar" id="sessionSidebar">
+ <div class="side-head">
+ <span class="side-title">会话</span>
+ <button class="side-new" id="sessionNewBtn" title="新建会话">
+ <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2Z"/></svg>
+ </button>
+ </div>
+ <div class="side-list" id="sessionList"></div>
+ </aside>
+
+ <div class="chat-col">
+ <!-- 顶栏 -->
+ <header class="header">
+ <div class="header-left">
+ <div class="app-icon">
+ <svg viewBox="0 0 24 24" width="17" height="17"><path fill="currentColor" d="M12 2a7 7 0 0 0-7 7c0 4.2 5.6 11.6 6.3 12.4a.9.9 0 0 0 1.4 0c.7-.8 6.3-8.2 6.3-12.4a7 7 0 0 0-7-7Zm0 9.6a2.6 2.6 0 1 1 0-5.2 2.6 2.6 0 0 1 0 5.2Z"/></svg>
+ </div>
+ <div class="header-titles">
+ <div class="app-name">生活助手</div>
+ <div class="location-line">
+ <span class="loc-dot" id="locDot"></span>
+ <span class="loc-text" id="locText">定位中…</span>
+ </div>
+ </div>
+ </div>
+ <div class="header-actions">
+ <button class="icon-btn" id="mapBtn" title="软件内卫星地图">
+ <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 2C7 2 3 6 3 11c0 2.3.9 4.4 2.3 6L12 24l6.7-7c1.4-1.6 2.3-3.7 2.3-6 0-5-4-9-9-9Zm0 12.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z"/></svg>
+ </button>
+ <button class="icon-btn" id="speakerBtn" title="语音播报开关">
+ <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3Zm13.5 3a4.5 4.5 0 0 0-2.5-4v8a4.5 4.5 0 0 0 2.5-4ZM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6Z"/></svg>
+ </button>
+ <button class="icon-btn" id="voiceBtn" title="我的声音（克隆音色读回复）">
+ <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4Zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.9V21h2v-3.1a8 8 0 0 0 7-7.9h-2Zm-6 2.5A2.5 2.5 0 0 1 9.5 10V6a2.5 2.5 0 0 1 5 0v4a2.5 2.5 0 0 1-2.5 2.5Z"/></svg>
+ </button>
+ <button class="icon-btn" id="settingsBtn" title="连接设置">
+ <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 3a2 2 0 0 1 2 2v1.1a7 7 0 0 1 1.6.7l.8-.8a2 2 0 0 1 2.8 0l1.4 1.4a2 2 0 0 1 0 2.8l-.8.8c.3.5.5 1 .7 1.6H22a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1.1a7 7 0 0 1-.7 1.6l.8.8a2 2 0 0 1 0 2.8l-1.4 1.4a2 2 0 0 1-2.8 0l-.8-.8c-.5.3-1 .5-1.6.7V22a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1.1a7 7 0 0 1-1.6-.7l-.8.8a2 2 0 0 1-2.8 0l-1.4-1.4a2 2 0 0 1 0-2.8l.8-.8a7 7 0 0 1-.7-1.6H2a2 2 0 0 1-2-2v-2a2 2 0 0 1 2-2h1.1c.2-.6.4-1.1.7-1.6l-.8-.8a2 2 0 0 1 0-2.8l1.4-1.4a2 2 0 0 1 2.8 0l.8.8c.5-.3 1-.5 1.6-.7V5a2 2 0 0 1 2-2h2Zm0 7a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
+ </button>
+ <button class="icon-btn accent" id="locateBtn" title="重新定位">
+ <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm8.9 3a9 9 0 0 0-8-8V1h-2v2a9 9 0 0 0-8 8H1v2h2a9 9 0 0 0 8 8v2h2v-2a9 9 0 0 0 8-8h2v-2h-2Z"/></svg>
+ </button>
+ </div>
+ </header>
+
+ <!-- 聊天流 -->
+ <main class="transcript" id="transcript"></main>
+
+ <!-- 输入栏 -->
+ <footer class="composer-wrap">
+ <div class="composer">
+ <div class="composer-inner">
+ <button class="composer-btn" id="attachBtn" title="拍照/选图">
+ <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M4 5a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v14a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3V5Zm3 1v12h10V6H7Zm4.5 2a2 2 0 1 0 0 4 2 2 0 0 0 0-4Z"/></svg>
+ </button>
+ <textarea id="input" rows="1" placeholder="想问点什么？路线、周边、生活常识…"></textarea>
+ <button class="composer-btn" id="micBtn" title="按住说话/语音输入">
+ <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 14a4 4 0 0 0 4-4V6a4 4 0 0 0-8 0v4a4 4 0 0 0 4 4Zm6-4a6 6 0 0 1-12 0H4a8 8 0 0 0 7 7.9V21h2v-3.1a8 8 0 0 0 7-7.9h-2Z"/></svg>
+ </button>
+ <button class="send-btn" id="sendBtn">
+ <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M2 21l21-9L2 3v7l15 2-15 2v7Z"/></svg>
+ </button>
+ </div>
+ <div class="voice-hint" id="voiceHint">正在听…再说一次「说完了」或点击结束</div>
+ </div>
+ </footer>
+ </div>
+
+  <!-- 图片确认浮层 -->
+  <div class="overlay" id="imageSheet" hidden>
+    <div class="image-sheet card">
+      <div class="sheet-title">分析图片</div>
+      <img id="pendingImg" alt="预览">
+      <input type="text" id="imageQuestion" placeholder="想问点什么？例如「这个还能吃吗」">
+      <div class="sheet-actions">
+        <button class="btn-ghost" id="imageCancel">取消</button>
+        <button class="btn-primary" id="imageSend">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 设置浮层 -->
+  <div class="overlay" id="settingsSheet" hidden>
+    <div class="settings-sheet card">
+      <div class="sheet-title">连接设置</div>
+      <label class="field-label">后端地址</label>
+      <input type="text" id="cfgBaseURL" placeholder="留空 = 同源（云端链接直接用，无需填写）">
+      <label class="field-label">模型预设</label>
+      <select id="cfgModel">
+        <option value="deepseek-v4-flash">DeepSeek V4 Flash（默认）</option>
+        <option value="deepseek-v4-pro">DeepSeek V4 Pro（更强）</option>
+        <option value="custom">自定义模型名</option>
+      </select>
+      <input type="text" id="cfgCustomModel" placeholder="自定义模型名，如 deepseek-v4-flash" hidden>
+      <label class="field-label">API Key（留空用后端 .env 配置）</label>
+      <input type="text" id="cfgApiKey" placeholder="sk-…">
+      <label class="field-label nofilter-label" for="cfgNoFilter">
+        <span class="switch">
+          <input type="checkbox" id="cfgNoFilter">
+          <span class="slider"></span>
+        </span>
+ <span class="nofilter-text">
+ <span class="nofilter-name">满血无审查</span>
+ <span class="nofilter-desc">开启后任何问题都不被拒绝；关闭后按默认规则回答</span>
+ </span>
+ </label>
+ <label class="field-label nofilter-label" for="cfgProactive">
+ <span class="switch">
+ <input type="checkbox" id="cfgProactive">
+ <span class="slider"></span>
+ </span>
+ <span class="nofilter-text">
+ <span class="nofilter-name">主动搭话</span>
+ <span class="nofilter-desc">记住你的作息与口味，早晨/饭点/晚间主动发消息，还能陪你闲聊</span>
+ </span>
+ </label>
+ <label class="field-label nofilter-label" for="cfgSatellite">
+ <span class="switch">
+ <input type="checkbox" id="cfgSatellite">
+ <span class="slider"></span>
+ </span>
+ <span class="nofilter-text">
+ <span class="nofilter-name">卫星回复</span>
+ <span class="nofilter-desc">开启后每次回复顶部带你的实时坐标和「你站在…」位置说明；关闭后正常回答</span>
+ </span>
+ </label>
+ <div class="health-line" id="healthResult"></div>
+ <div class="pojia-box">
+ <div class="sheet-title">破甲中心</div>
+ <div class="pojia-status" id="pojiaStatus">检查中…</div>
+ <div class="pojia-actions">
+ <button class="btn-primary" id="pojiaInstall">一键破甲 · 注入 WorkBuddy</button>
+ <button class="btn-ghost" id="pojiaUninstall">回滚</button>
+ </div>
+ <div class="pojia-log" id="pojiaLog" hidden></div>
+ </div>
+ <div class="sheet-actions">
+ <button class="btn-ghost" id="cfgTest">测试连接</button>
+ <button class="btn-primary" id="cfgSave">保存</button>
+ </div>
+    </div>
+  </div>
+
+  <!-- 卡片舞台（中间弹窗） -->
+  <div class="stage" id="stage" hidden>
+    <div class="stage-backdrop" id="stageBackdrop"></div>
+    <div class="stage-body">
+      <div class="stage-card card" id="stageCard"></div>
+      <div class="stage-pager" id="stagePager" hidden>
+        <button class="pager-btn" id="stagePrev">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M15.4 7.4 14 6l-6 6 6 6 1.4-1.4L10.8 12Z"/></svg>
+        </button>
+        <div class="pager-dots" id="stageDots"></div>
+        <button class="pager-btn" id="stageNext">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path fill="currentColor" d="M8.6 7.4 10 6l6 6-6 6-1.4-1.4L13.2 12Z"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 软件内卫星地图面板（纯 JS 自绘：卫星瓦片 + 附近全类型 POI 标记） -->
+ <div class="map-panel" id="mapPanel" hidden>
+ <div class="map-bar">
+ <span class="map-title">🛰️ 卫星地图 · 附近</span>
+ <div class="map-legend" id="mapLegend"></div>
+ <button class="nav-close" id="mapClose" title="关闭">✕</button>
+ </div>
+ <div class="map-stage">
+ <div class="map-wrap" id="mapWrap">
+ <div class="map-tiles" id="mapTiles"></div>
+ <canvas class="map-canvas" id="mapCanvas"></canvas>
+ <div class="map-balloon" id="mapBalloon" hidden></div>
+ <div class="map-zoom">
+ <button id="mapZoomIn">＋</button>
+ <button id="mapZoomOut">－</button>
+ <button id="mapRecenter">⌖</button>
+ </div>
+ </div>
+ <div class="map-side">
+ <div class="map-status" id="mapStatus">加载附近数据…</div>
+ <div class="map-poi-list" id="mapPoiList"></div>
+ </div>
+ </div>
+ </div>
+
+ <!-- 导航面板（软件内嵌高德网页导航） -->
+ <div class="nav-panel" id="navPanel" hidden>
+ <div class="nav-bar">
+ <span class="nav-title" id="navTitle">导航</span>
+ <button class="nav-close" id="navClose" title="关闭">✕</button>
+ </div>
+ <iframe id="navFrame" src="about:blank" allow="geolocation"></iframe>
+ </div>
+
+ <!-- 我的声音面板 -->
+ <div class="overlay" id="voiceSheet" hidden>
+ <div class="voice-sheet card">
+ <div class="sheet-title">我的声音 <button class="sheet-close" id="voiceClose">✕</button></div>
+ <div class="voice-status" id="voiceStatus">检查语音服务…</div>
+
+ <div class="voice-tabs">
+ <button class="voice-tab cur" data-tab="link">视频链接提取</button>
+ <button class="voice-tab" data-tab="record">录制 10 秒</button>
+ </div>
+
+ <div class="voice-pane" id="voicePaneLink">
+ <div class="voice-hint2">粘贴视频链接，自动下载音轨、去掉背景音乐，提取人声克隆。链接只在本机处理。</div>
+ <input type="text" id="voiceLink" placeholder="粘贴视频链接（抖音/B站/YouTube…）">
+ <div class="voice-progress" id="voiceProgress" hidden></div>
+ <button class="btn-primary" id="voiceExtractBtn">提取声音</button>
+ </div>
+
+ <div class="voice-pane" id="voicePaneRecord" hidden>
+ <div class="voice-hint2">点开始后照着下面这句话读（10 秒内读完，正常音量）：</div>
+ <div class="read-script" id="readScript">你好，这是我自己的声音。现在我在录制一段十秒钟的参考音频，用来把音色克隆下来，之后电脑就能用我的声音朗读任何文字。</div>
+ <div class="record-row">
+ <button class="btn-primary" id="recordBtn">🎤 开始录制</button>
+ <span class="record-timer" id="recordTimer"></span>
+ </div>
+ <div class="voice-progress" id="recordProgress" hidden></div>
+ </div>
+
+ <div class="voice-list-title">可用声音</div>
+ <div class="voice-list" id="voiceList"></div>
+ </div>
+ </div>
+
+ <input type="file" id="fileInput" accept="image/*" hidden>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

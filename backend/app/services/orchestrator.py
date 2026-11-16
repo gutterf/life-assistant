@@ -20,6 +20,7 @@ from .deepseek import DeepSeekClient, DeepSeekError, IntentDecision
 from .filters import RESTRICTED_REPLY, is_restricted
 from .ocr import OCRService
 from .profile import get_profile
+from .satellite import SATELLITE_SYSTEM_RULE, is_satellite_reply
 
 log = logging.getLogger(__name__)
 
@@ -28,6 +29,14 @@ _MODE_LABEL = {
     TravelMode.WALKING: "步行",
     TravelMode.DRIVING: "驾车",
 }
+
+_SATELLITE_COORD_RE = __import__("re").compile(r"^\s*-?\d+\.\d{1,6}\s*,\s*-?\d+\.\d{1,6}")
+
+
+def _satellite_header(loc: "ResolvedLocation") -> str:
+    """卫星回复抬头：第一行坐标，第二行「你站在…」，保持与开关文案一致。"""
+    return (f"{loc.lat:.4f},{loc.lng:.4f}\n"
+            f"你站在{loc.label}（{loc.lat:.4f}N，{loc.lng:.4f}E）。\n")
 
 
 class ResolvedLocation:
@@ -121,6 +130,12 @@ class Orchestrator:
             except (AMapError, DeepSeekError) as exc:
                 log.warning("意图 %s 处理失败: %s", decision.intent.value, exc)
                 resp = await self._fallback(req, decision, location, session_id, meta, str(exc), ov)
+
+        # 卫星回复：开关开启且带定位时，回复顶部加「坐标 + 你站在」抬头。
+        # 纯文本前置，不经过任何过滤与模型，破甲链路不受影响。
+        if is_satellite_reply() and location and not _SATELLITE_COORD_RE.match(resp.reply):
+            resp.reply = _satellite_header(location) + resp.reply
+            resp.speech = resp.reply
 
         # 硬框架学习：每轮结束后静默更新画像（失败不影响回复）
         try:
@@ -277,6 +292,11 @@ class Orchestrator:
             prompt = req.text
             if profile_block:
                 prompt = f"{profile_block}\n用户问：{req.text}"
+            # 卫星回复模式下把规则与实时坐标交给模型，让它按格式接着写正文
+            if is_satellite_reply() and location:
+                coord_line = f"{location.lat:.4f},{location.lng:.4f}"
+                stand_line = f"你站在{location.label}（{location.lat:.4f}N，{location.lng:.4f}E）。"
+                prompt = f"{SATELLITE_SYSTEM_RULE}\n本轮用户坐标：{coord_line}\n位置说明：{stand_line}\n\n{prompt}"
             answer = await self._llm.answer_knowledge(
                 prompt, location_label=location.label if location else None,
                 model=ov.model, api_key=ov.api_key, no_filter=ov.no_filter)

@@ -127,6 +127,7 @@ class AMapClient:
         radius_m: int | None = None,
         poi_type: str | None = None,
         limit: int = 20,
+        page: int = 1,
     ) -> list[PlaceItem]:
         """半径内周边搜索，结果按距离升序。keywords 与 types 至少给一个。"""
         radius = max(1, min(radius_m or self._s.default_radius_m, self._s.max_radius_m))
@@ -136,7 +137,7 @@ class AMapClient:
             "location": format_amap_location(lng, lat),
             "radius": radius,
             "offset": min(max(limit, 1), 25),
-            "page": 1,
+            "page": max(1, page),
             "sortrule": "distance",
             "extensions": "all",
         }
@@ -325,9 +326,14 @@ class AMapClient:
 
 # ------------------------------------------------------------------ helpers
 def _normalize_types(poi_type: str | None) -> str:
-    """如果调用方直接给了 6 位分类码就透传，否则为空（改用 keywords 检索）。"""
+    """调用方直接给 6 位分类码（可 | 连接多类）就透传，否则为空（改用 keywords 检索）。"""
     t = (poi_type or "").strip()
-    return t if t.isdigit() and len(t) == 6 else ""
+    if not t:
+        return ""
+    parts = [p for p in t.split("|") if p]
+    if parts and all(p.isdigit() and len(p) == 6 for p in parts):
+        return "|".join(parts)
+    return ""
 
 
 def _bus_instruction(line: dict[str, Any]) -> str:
