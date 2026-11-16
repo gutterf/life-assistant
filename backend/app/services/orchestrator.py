@@ -224,27 +224,20 @@ class Orchestrator:
         meta["result_count"] = len(places)
 
         if not places:
-            return ChatResponse(
-                session_id=session_id, intent=Intent.NEARBY,
-                reply=f"{radius // 1000} 公里内没有找到与「{keyword}」匹配的地点，换个关键词试试。",
-                meta=meta,
-            )
+            # 高德没结果时不把空结果甩给用户，整段交给满血问答（反向追问/给答案）
+            return await self._handle_knowledge(req, decision, location, session_id, meta, ov)
 
-        card = Card(
-            type=CardType.PLACE_LIST,
-            title=f"{keyword} · 附近结果",
-            subtitle=f"半径 {radius // 1000} 公里 · 共 {len(places)} 家",
-            speech=_places_speech(places, radius),
-            places=places,
-        )
-        top = places[0]
         best_rated = max((p for p in places if p.rating), key=lambda p: p.rating or 0, default=None)
-        reply = f"以**{location.label}**为中心，{radius // 1000} 公里内找到 {len(places)} 家{keyword}。\n"
-        reply += f"最近的是 {top.name}" + (f"，{top.distance_m} 米" if top.distance_m is not None else "") + "。"
-        if best_rated and best_rated is not top and best_rated.rating:
-            reply += f"\n评分最高的是 {best_rated.name}，{best_rated.rating} 分。"
+        lines = [f"以**{location.label}**为中心，{radius // 1000} 公里内找到 {len(places)} 家{keyword}："]
+        for p in places[:5]:
+            d = f"{p.distance_m} 米" if p.distance_m is not None else ""
+            rate = f" · {p.rating} 分" if p.rating else ""
+            lines.append(f"{p.name}（{d}{rate}）")
+        if best_rated and best_rated.rating:
+            lines.append(f"评分最高的是 {best_rated.name}，{best_rated.rating} 分。")
+        reply = "\n".join(lines)
         return ChatResponse(session_id=session_id, intent=Intent.NEARBY, reply=reply,
-                            cards=[card], speech=card.speech, meta=meta)
+                            cards=[], speech=reply.replace("**", ""), meta=meta)
 
     # ------------------------------------------------------------ 点选导航
     async def handle_navigate(self, req: NavigateRequest, session_id: str) -> NavigateResponse:
@@ -284,9 +277,8 @@ class Orchestrator:
                                 location: ResolvedLocation | None, session_id: str,
                                 meta: dict[str, Any], ov: ClientOverride) -> ChatResponse:
         if not ov.no_filter and is_restricted(req.text):
-            card = Card(type=CardType.TEXT, title="回答", text=RESTRICTED_REPLY, speech=RESTRICTED_REPLY)
             return ChatResponse(session_id=session_id, intent=Intent.KNOWLEDGE, reply=RESTRICTED_REPLY,
-                                cards=[card], speech=RESTRICTED_REPLY, meta=meta)
+                                cards=[], speech=RESTRICTED_REPLY, meta=meta)
         try:
             profile_block = get_profile().context_block()
             prompt = req.text
@@ -303,9 +295,8 @@ class Orchestrator:
         except DeepSeekError as exc:
             log.warning("常识问答失败: %s", exc)
             answer = "我这边暂时连不上知识服务，稍后再问一次试试。"
-        card = Card(type=CardType.TEXT, title="回答", text=answer, speech=answer)
         return ChatResponse(session_id=session_id, intent=Intent.KNOWLEDGE, reply=answer,
-                            cards=[card], speech=answer, meta=meta)
+                            cards=[], speech=answer, meta=meta)
 
     # ------------------------------------------------------------ 图片分析
     async def _handle_image_without_photo(self, req: ChatRequest, decision: IntentDecision,

@@ -88,7 +88,7 @@
         bub.appendChild(img);
       }
       if (m.text) bub.appendChild(document.createTextNode(m.text));
- if (m.cards && m.cards.length) {
+ if (m.cards && m.cards.some((c) => c.type !== 'text')) {
  const chip = document.createElement('div');
  chip.className = 'card-chip';
  chip.textContent = '▤ ' + (m.cards.length > 1 ? m.cards.length + ' 张卡片' : m.cards[0].title || '查看卡片');
@@ -96,7 +96,7 @@
  bub.appendChild(chip);
  }
  // AI 回答底部固定一排动作按钮：有地点就给导航入口
- if (m.role === 'ai' && m.cards && m.cards.length) {
+ if (m.role === 'ai' && m.cards && m.cards.some((c) => c.type !== 'text')) {
  const actions = document.createElement('div');
  actions.className = 'msg-actions';
  actions.className = 'msg-actions';
@@ -198,7 +198,7 @@
  S.sessionId = data.session_id || S.sessionId;
  const cards = data.cards || [];
  addMessage('ai', data.reply || '（无回复）', { cards });
- if (cards.length) openStage(cards, 0);
+ if (cards.some((c) => c.type !== 'text')) openStage(cards, 0);
  if (S.autoSpeak && data.speech) speak(data.speech);
  loadSessionList();
  } catch (e) {
@@ -266,7 +266,7 @@
       if (!resp.ok) throw new Error('服务端 ' + resp.status + '：' + (data.detail || ''));
       const cards = data.cards || [];
       addMessage('ai', data.reply || '（无回复）', { cards });
-      if (cards.length) openStage(cards, 0);
+      if (cards.some((c) => c.type !== 'text')) openStage(cards, 0);
       if (S.autoSpeak && data.speech) speak(data.speech);
     } catch (e) {
       addMessage('ai', '请求失败：' + e.message);
@@ -409,6 +409,22 @@
 
  // ---------- 语音播报 ----------
  let ttsAudio = null;
+ let ttsQueue = [];
+ let ttsPlaying = false;
+ let speakSeq = 0;
+ function splitSentences(text) {
+ const parts = String(text || '').split(/(?<=[。！？!?；;])/).map((s) => s.trim())
+ .filter((s) => s.replace(/[*#\s]/g, ''));
+ if (!parts.length) return [String(text || '')];
+ const out = [];
+ let buf = '';
+ for (const seg of parts) {
+ buf += seg;
+ if (buf.length >= 20) { out.push(buf); buf = ''; }
+ }
+ if (buf) out.push(buf);
+ return out.length ? out : [String(text || '')];
+ }
  function speak(text) {
  if (S.voiceDefault) {
  speakCloned(text).catch(() => speakSystem(text));
@@ -425,18 +441,47 @@
  speechSynthesis.speak(u);
  } catch (e) { /* 忽略 */ }
  }
+ function enqueuePlay(url) {
+ ttsQueue.push(url);
+ pumpQueue();
+ }
+ function pumpQueue() {
+ if (ttsPlaying || !ttsQueue.length) return;
+ ttsPlaying = true;
+ const url = ttsQueue.shift();
+ if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
+ ttsAudio = new Audio(url);
+ const next = () => { ttsPlaying = false; pumpQueue(); };
+ ttsAudio.onended = next;
+ ttsAudio.onerror = next;
+ ttsAudio.play().catch(next);
+ }
  async function speakCloned(text) {
+ const seq = ++speakSeq;
  const headers = { 'Content-Type': 'application/json' };
  applyHeaders(headers);
+ const sents = splitSentences(text);
+ let first = true;
+ for (const s of sents) {
+ if (seq !== speakSeq) return; // 新播报已打断
  const resp = await fetch(S.baseURL + '/api/v1/voice/tts', {
  method: 'POST', headers,
- body: JSON.stringify({ text, voice_id: S.voiceDefault })
+ body: JSON.stringify({ text: s, voice_id: S.voiceDefault })
  });
  const data = await resp.json().catch(() => ({}));
  if (!resp.ok) throw new Error(data.detail || resp.status);
- playAudio(S.baseURL + data.url);
+ if (first) {
+ first = false;
+ ttsQueue = [];
+ ttsPlaying = false;
+ if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
+ }
+ enqueuePlay(S.baseURL + data.url);
+ }
  }
  function playAudio(url) {
+ ttsQueue = [];
+ ttsPlaying = false;
  if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
  ttsAudio = new Audio(url);
  ttsAudio.play().catch(() => {});
@@ -446,6 +491,9 @@
  localStorage.setItem('la.autoSpeak', S.autoSpeak ? '1' : '0');
  $('speakerBtn').classList.toggle('on', S.autoSpeak);
  if (!S.autoSpeak) {
+ speakSeq++;
+ ttsQueue = [];
+ ttsPlaying = false;
  speechSynthesis.cancel();
  if (ttsAudio) { ttsAudio.pause(); ttsAudio = null; }
  }

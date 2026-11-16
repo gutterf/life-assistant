@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import os
@@ -348,6 +349,11 @@ def synth(text: str, voice_id: str, ref_text: str | None = None) -> Path:
                 ref_text = None
     cdir = CLIPS_DIR / voice_id
     cdir.mkdir(parents=True, exist_ok=True)
+    h = hashlib.sha1(f"{voice_id}|{text}".encode("utf-8")).hexdigest()[:16]
+    cached = cdir / f"c_{h}.mp3"
+    if cached.is_file():
+        return cached
     out = cdir / f"{uuid.uuid4().hex[:8]}.mp3"
     vs_tts(text, ref, out, ref_text)
-    return out
+    os.replace(out, cached)
+    return cached
