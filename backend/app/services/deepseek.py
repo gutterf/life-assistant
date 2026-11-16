@@ -216,7 +216,7 @@ class DeepSeekClient:
                 last_err = exc
                 if attempt < self._s.deepseek_max_retries:
                     await asyncio.sleep(0.6 * (2 ** attempt))
-                    log.warning("deepseek 重试 %s/%s: %s", attempt + 1, self._s.deepseek_max_retries, exc)
+                    log.warning("deepseek 重试 %s/%s: %r", attempt + 1, self._s.deepseek_max_retries, exc)
         raise DeepSeekError(f"deepseek 调用失败: {last_err}")
 
     # ---------------------------------------------------------- 意图判定

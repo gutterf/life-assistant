@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     deepseek_model: str = "deepseek-chat"
     # 需要多步推理时使用的模型（可选，同 key 同 endpoint）
     deepseek_reasoner_model: str = "deepseek-reasoner"
-    deepseek_timeout_s: float = 30.0
+    deepseek_timeout_s: float = 120.0
     deepseek_max_retries: int = 2
 
     # ---- 高德地图 ----
